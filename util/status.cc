@@ -10,6 +10,15 @@
 
 namespace leveldb {
 
+// 源码注释
+// Status的状态都由一个私有变量char * state_定义
+// 如果状态为OK，则此变量为null；
+// 否则，状态由一个状态码code和一个message组成；
+// state_[0..3]是message的长度；
+// state_[4]第4个字节是code的值，预先定义了一些状态，由enum Code定义；
+// state_[5..]就是message的值了，从构造函数看出，可以同时提供两个msg，这两个msg会通过:分隔；
+// 另外为每个enum Code都定义了两个快捷函数，一个是生成一个这个错误的status，一个是判断是否是某个错误。
+
 const char* Status::CopyState(const char* state) {
   uint32_t size;
   std::memcpy(&size, state, sizeof(size));

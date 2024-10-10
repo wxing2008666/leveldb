@@ -21,6 +21,23 @@
 #include "leveldb/export.h"
 #include "leveldb/status.h"
 
+// 源码注释
+// LevelDB是一个数据库函数库，数据库总是需要操作文件和线程，这就需要做很多系统调用
+// 各个操作系统的系统调用方式不一样，为了跨平台支持，LevelDB对这些系统调用做了一层封装
+// 提供了统一的接口来操作，并且提供了Posix和Windows两种实现
+// 如果需要实现其他的系统，只需要根据系统实现相应的Env即可。
+
+// Posix通过文件env_posix.cc和posix_logger.h两个文件来实现；
+// Wondows通过文件env_windows.cc和windows_logger.h两个文件来实现；
+// 通过cmake来选择相应的实现
+// include/leveldb/env.c：env相关的接口定义
+// util/env_posix.cc：Posix系统相关的封装，包括文件操作，文件锁，后台线程创建
+// util/posix_logger.h：Posix写日志
+// util/env_windows.cc util/windows_logger.h: Windows相关的实现
+// http://zrainy.top/2019/10/21/leveldb%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A03-env/
+// http://kaiyuan.me/2017/06/02/leveldb-04/
+
+
 // This workaround can be removed when leveldb::Env::DeleteFile is removed.
 #if defined(_WIN32)
 // On Windows, the method name DeleteFile (below) introduces the risk of
