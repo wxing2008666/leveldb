@@ -18,6 +18,19 @@ void PutFixed64(std::string* dst, uint64_t value) {
   dst->append(buf, sizeof(buf));
 }
 
+// 源码注释
+// varint中的每个字节的最高位（bit）有特殊含义
+// 如果该位为1, 表示后续的字节也是这个数字的一部分
+// 如果该位为0, 则结束。其他的7位（bit）都表示数字。
+// 7位能表示的最大数是127, 因此小于128的数字都可以用一个字节表示。
+// 大于等于128的数字, 比如说300, 编码后会用两个字节在内存中表示为:
+// 低               高
+// 1010 1100 0000 0010
+// 实现过程如下：
+// 300的二进制为100101100， 取低7位也就是010 1100放在内存低字节中
+// 由于第二个字节也是数字的一部分, 因此内存低字节的最高位为1, 则完整的内存低字节为1010 1100。
+// 300的高2位也就是10放到内存的高字节中, 因为数字到该字节结束
+// 因此该字节包括最高位的其他6位都用0填充, 则完整的内存高字节为0000 0010
 char* EncodeVarint32(char* dst, uint32_t v) {
   // Operate on characters as unsigneds
   uint8_t* ptr = reinterpret_cast<uint8_t*>(dst);
@@ -51,6 +64,17 @@ void PutVarint32(std::string* dst, uint32_t v) {
   char* ptr = EncodeVarint32(buf, v);
   dst->append(buf, ptr - buf);
 }
+
+// char* EncodeVarint32(char* dst, uint32_t v) {
+//   static const int B = 128;
+//   uint8_t* ptr = reinterpret_cast<uint8_t*>(dst);
+//   while (v >= B) {
+//     *(ptr++) = (v & (B-1)) | B;
+//     v >>= 7;
+//   }
+//   *(ptr++) = static_cast<uint8_t>(v);
+//   return reinterpret_cast<char*>(ptr);
+// }
 
 char* EncodeVarint64(char* dst, uint64_t v) {
   static const int B = 128;

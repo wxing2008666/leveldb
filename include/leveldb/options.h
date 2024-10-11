@@ -31,6 +31,11 @@ enum CompressionType {
 };
 
 // Options to control the behavior of a database (passed to DB::Open)
+// 源码注释
+// Options 定义了打开leveldb时候的行为包括了key的比较函数、整个数据库的读写读写方式、后台任务、
+// 全局的日志、Memtable的上限、数据库打开文件的最大个数、Cache初始化、block的大小、默认压缩方式、基于磁盘读的过滤等
+// Options 定义了整个数据库打开的参数的入口
+// 同时也定义了ReadOptions和WriteIOptions分别来定义leveldb读和写的参数控制
 struct LEVELDB_EXPORT Options {
   // Create an Options object with default values for all fields.
   Options();
@@ -80,6 +85,8 @@ struct LEVELDB_EXPORT Options {
   // so you may wish to adjust this parameter to control memory usage.
   // Also, a larger write buffer will result in a longer recovery time
   // the next time the database is opened.
+  // 源码注释
+  // 每个active memtable的内存消耗的上限，一旦超过该值就转换为不可更改的memtable
   size_t write_buffer_size = 4 * 1024 * 1024;
 
   // Number of open files that can be used by the DB.  You may need to
@@ -155,6 +162,9 @@ struct LEVELDB_EXPORT ReadOptions {
 
   // Should the data read for this iteration be cached in memory?
   // Callers may wish to set this field to false for bulk scans.
+  // 源码注释
+  // 从迭代器读取的数据是否要缓存在内存中,
+  // 数据批量扫描可能希望为false
   bool fill_cache = true;
 
   // If "snapshot" is non-null, read as of the supplied snapshot
@@ -182,6 +192,13 @@ struct LEVELDB_EXPORT WriteOptions {
   // crash semantics as the "write()" system call.  A DB write
   // with sync==true has similar crash semantics to a "write()"
   // system call followed by "fsync()".
+  // 源码注释
+  // 如果为true,则写操作将先从操作系统缓冲区缓存中刷新(通过调用WritableFile::Sync())
+  // 然后再认为写入完成.如果这个标志是true,写操作会变慢
+  // 如果这个标志是false,如果机器崩溃,一些最近的写入可能会丢失
+  // 是否写同步，同步写是忙于异步写的，但不会造成数据丢失
+  // 如果是异步写，只有在机器重启的情况下才会造成数据丢失
+  // 其它情况这不会丢失
   bool sync = false;
 };
 

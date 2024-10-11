@@ -19,6 +19,12 @@
 
 namespace leveldb {
 
+// 源码注释
+// 每次按照四字节长度读取字节流中的数据data, 并使用普通的哈希函数计算哈希值。计算过程中使用uint32_t的自然溢出特性。
+// 四字节读取则为了加速, 最终可能剩下 3/2/1 个多余的字节, 使用 switch 语句补充计算, 以实现最好的性能。
+// 这里FALLTHROUGH_INTENDED宏并无实际作用
+// LevelDB中哈希表和布隆过滤器会使用到该哈希函数。
+
 uint32_t Hash(const char* data, size_t n, uint32_t seed) {
   // Similar to murmur hash
   const uint32_t m = 0xc6a4a793;

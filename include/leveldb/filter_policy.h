@@ -32,6 +32,9 @@ class LEVELDB_EXPORT FilterPolicy {
   // changes in an incompatible way, the name returned by this method
   // must be changed.  Otherwise, old incompatible filters may be
   // passed to methods of this type.
+  // 源码注释
+  // 为了判断 encode 时使用的 filter 与 decode 时使用的 filter 是否一致
+  // 需要为 filter 设置一个名字，通过名字来区分是否是同种类的 filter
   virtual const char* Name() const = 0;
 
   // keys[0,n-1] contains a list of keys (potentially with duplicates)
@@ -40,6 +43,8 @@ class LEVELDB_EXPORT FilterPolicy {
   //
   // Warning: do not change the initial contents of *dst.  Instead,
   // append the newly constructed filter to *dst.
+  // 源码注释
+  // 为keys中的所有key创建一个filter, 将filter编码后append到dst里
   virtual void CreateFilter(const Slice* keys, int n,
                             std::string* dst) const = 0;
 
