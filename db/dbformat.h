@@ -64,7 +64,35 @@ typedef uint64_t SequenceNumber;
 
 // We leave eight bits empty at the bottom so a type and sequence#
 // can be packed together into 64-bits.
+// 源码注释
+// 64位, 最高8位为0, 8位用于存储类型标识符, 56位存储sequence number
 static const SequenceNumber kMaxSequenceNumber = ((0x1ull << 56) - 1);
+
+// 源码注释
+// Key的设计需要保存用户所存入的User Key信息
+// 另一方面还必须存在一个序号来表示同一个User Key的多个版本更新
+// InnoDB存储引擎为了实现MVCC则是将一个全局递增的Transaciton ID写入到B+Tree聚簇索引的行记录中
+// 而leveldb则是使用一个全局递增的序列号SequenceNumber写入到Key中
+// 以实现Snapshot功能, 本质上就是MVCC
+// 从另一个角度来说, 如果某个DB支持MVCC或者说快照读功能的话,那么在其内部一定存在一个全局递增的序号
+// 并且该序号是必须和用户数据一起被持久化至硬盘中的
+// 最后, 当我们使用Delete删除一个Key时, 实际上并不会找到这条数据并物理删除
+// 而是追加写一条带有删除标志位的Key
+// 所以我们还需要一个标志位, 来表示当前Key是否被删除, leveldb中使用ValueType这个枚举类实现
+// 实际上, User Key、SequenceNumber以及ValueType正是组成一个Key的必要组件
+// 并且在这些组件之上还会有一些额外的扩展, 这些扩展也只是简单地使用Varint来记录User Key的长度
+
+// InternalKey本质上就是一个字符串, 由 User Key、SequenceNumber以及ValueType组成, 是一个组合结构
+// ParsedInternalKey其实就是对InternalKey的解析
+// 将 User Key、SequenceNumber以及ValueType从InternalKey中提取出来并保存起来
+
+//
+// ParsedInternalKey -> | User Key | SequenceNumber | ValueType |
+//
+// InternalKey -> | User Key | (SequenceNumber << 8|ValueType) |
+
+// leveldb将 User Key、SequenceNumber以及ValueType拼接成InternalKey时并不是简单的Append
+// 而是将ValueType揉到了SequenceNumber的低8位中以节省存储空间
 
 struct ParsedInternalKey {
   Slice user_key;
@@ -83,12 +111,16 @@ inline size_t InternalKeyEncodingLength(const ParsedInternalKey& key) {
 }
 
 // Append the serialization of "key" to *result.
+// 源码注释
+// 将ParsedInternalKey中的三个组件打包成InternalKey并存放到result中
 void AppendInternalKey(std::string* result, const ParsedInternalKey& key);
 
 // Attempt to parse an internal key from "internal_key".  On success,
 // stores the parsed data in "*result", and returns true.
 //
 // On error, returns false, leaves "*result" in an undefined state.
+// 源码注释
+// 将InternalKey拆解成三个组件并扔到result的相应字段中
 bool ParseInternalKey(const Slice& internal_key, ParsedInternalKey* result);
 
 // Returns the user key portion of an internal key.
@@ -181,6 +213,26 @@ inline bool ParseInternalKey(const Slice& internal_key,
 }
 
 // A helper class useful for DBImpl::Get()
+// 源码注释
+// 当我们查询一个User Key时, 其查询顺序为MemTable、Immutable Table以及位于硬盘中的SSTable
+// MemTable所提供的Get()方法需要使用到LookupKey,
+// 从该对象中我们可以得到所有我们需要的信息包括User Key、User Key的长度、Sequence Number以及Value Type;
+// LookupKey其实就是在InternalKey的基础上额外的添加了User Key的长度,这个长度是由Varint进行编码的
+// 程序为了能够正确的找到User Key和SequenceNumber等信息, 额外的使用了3个指针
+//
+// LookupKey -> |Size(Varint)|User Key|(SequenceNumber << 8|ValueType)|
+//              ^            ^                                        ^
+//              start_       kstart_                                  end_
+//
+// Size的大小为User Key的字节数再加上8, 然后通过EncodeVarint32()方法进行编码写入到字符串的头部
+// 对于LookupKey来说, 其Value Type为kValueTypeForSeek其实也就是kTypeValue
+// MemTableKey与LookupKey:
+//
+// MemTable Entry -> |Key Size(Varint, user_key.size()+8)|User Key|(SequenceNumber << 8|ValueType)|Vaule Size(Varint)|User Value|
+//
+// leveldb使用SkipList来实现位于内存中的MemTable并提供了Add()方法将Key-Value写入至SkipList中
+// 在SkipList的实现中,我们并没有发现Value字段,这是因为leveldb将User Key和User Value打包成一个更大的Key
+// 直接塞到了SkipList中, 具体实现可见MemTable::Add() 方法
 class LookupKey {
  public:
   // Initialize *this for looking up user_key at a snapshot with
@@ -193,6 +245,8 @@ class LookupKey {
   ~LookupKey();
 
   // Return a key suitable for lookup in a MemTable.
+  // 源码注释
+  // 可以看到MemTable Key和LookupKey其实是等价的
   Slice memtable_key() const { return Slice(start_, end_ - start_); }
 
   // Return an internal key (suitable for passing to an internal iterator)
