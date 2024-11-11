@@ -15,6 +15,15 @@
 namespace leveldb {
 namespace test {
 
+// 源码注释
+// 单元测试框架
+// RandomString: 用于随机生成给定长度的字符串
+// RandomKey: 用于随机生成给定长度的key与RandomString的区别在于可选字符集不同
+// CompressibleString:用于生成一系列可压缩字符串, 同时考虑压缩率这个因素
+// 先根据压缩后的长度随机生成好一个串, 然后根据压缩率将该串重复, 以达到压缩前的大小
+// 这样该串就比较容易能达到给定的压缩率
+// ErrorEnv：用于模拟底层IO错误
+
 MATCHER(IsOK, "") { return arg.ok(); }
 
 // Macros for testing the results of functions that return leveldb::Status or
