@@ -46,6 +46,10 @@ std::string EscapeString(const Slice& value) {
   return r;
 }
 
+// 源码注释
+// 从一个字符串片段（通过 Slice 类型表示）中解析并消费（即移除）一个十进制数
+// 并将这个数存储在提供的 uint64_t 类型的变量中
+// 它考虑了可能的溢出情况，并确保了在处理过程中不会因为数字过大而导致错误的结果
 bool ConsumeDecimalNumber(Slice* in, uint64_t* val) {
   // Constants that will be optimized away.
   constexpr const uint64_t kMaxUint64 = std::numeric_limits<uint64_t>::max();

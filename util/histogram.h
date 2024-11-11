@@ -9,6 +9,8 @@
 
 namespace leveldb {
 
+// 源码注释
+// 直方图类, 用于统计数据分布情况, 提供给性能评测工具使用
 class Histogram {
  public:
   Histogram() {}
@@ -23,9 +25,13 @@ class Histogram {
  private:
   enum { kNumBuckets = 154 };
 
+  // 中位数
   double Median() const;
+  // 百分位数
   double Percentile(double p) const;
+  // 平均值
   double Average() const;
+  // 标准偏差
   double StandardDeviation() const;
 
   static const double kBucketLimit[kNumBuckets];
