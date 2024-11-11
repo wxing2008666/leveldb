@@ -39,6 +39,10 @@
 
 
 // This workaround can be removed when leveldb::Env::DeleteFile is removed.
+// 源码注释
+// Env类提供了一个DeleteFile方法, 但同时在windows应用里被广泛应用的<windows.h>里也有一个DeleteFile宏
+// 如果不做任何干预的话, 这个不幸的巧合会导致编译器看到的leveldb::Env::DeleteFile方法的名称取决于<windows.h>是否包含在leveldb头文件之前还是之后
+// 为了避免这个问题, 在这里undefine DeleteFile方法并且在本文件最后重新定义它, 这样可以保证对外的DeleteFile总是leveldb::Env::DeleteFile
 #if defined(_WIN32)
 // On Windows, the method name DeleteFile (below) introduces the risk of
 // triggering undefined behavior by exposing the compiler to different
@@ -109,6 +113,9 @@ class LEVELDB_EXPORT Env {
   // returns non-OK.
   //
   // The returned file will only be accessed by one thread at a time.
+  // 源码注释
+  // 创建一个对象, 该对象对具有指定名称的文件进行写入
+  // 若文件已存在, 则会删除并创建一个新文件
   virtual Status NewWritableFile(const std::string& fname,
                                  WritableFile** result) = 0;
 
@@ -124,6 +131,9 @@ class LEVELDB_EXPORT Env {
   // not allow appending to an existing file.  Users of Env (including
   // the leveldb implementation) must be prepared to deal with
   // an Env that does not support appending.
+  // 源码注释
+  // 创建一个对象, 该对象朝已存在的文件追加, 或者创建一个新文件开始写入
+  // 可能会返回IsNotSupportedError这时表示Env不支持对已有文件进行追加
   virtual Status NewAppendableFile(const std::string& fname,
                                    WritableFile** result);
 
@@ -199,6 +209,11 @@ class LEVELDB_EXPORT Env {
   // to go away.
   //
   // May create the named file if it does not already exist.
+  // 源码注释
+  // 给指定文件加锁, 用于给数据库上锁, 防止多个进程同时打开同一个数据库
+  // leveldb会在数据库所在目录下创建一个文件"LOCK", 打开数据库前需要先
+  // 尝试获得"LOCK"文件的锁, 如果获得锁成功则表示没有其他进程在访问该数据库
+  // 此时可以打开数据库; 否则表示有其他进程在访问该数据库, 打开数据库失败
   virtual Status LockFile(const std::string& fname, FileLock** lock) = 0;
 
   // Release the lock acquired by a previous successful call to LockFile.
@@ -222,6 +237,9 @@ class LEVELDB_EXPORT Env {
   // or may not have just been created. The directory may or may not differ
   // between runs of the same process, but subsequent calls will return the
   // same directory.
+  // 源码注释
+  // path被设值成一个测试用的临时目录, 它不一定是刚刚才被创建的
+  // 目录在同一线程的多次运行中不一定不同, 但后续调用都会返回同一目录
   virtual Status GetTestDirectory(std::string* path) = 0;
 
   // Create and return a log file for storing informational messages.

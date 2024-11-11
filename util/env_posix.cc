@@ -545,11 +545,13 @@ class PosixEnv : public Env {
       return PosixError(filename, errno);
     }
 
+    // 如果mmap的数量超出上限了, 就跳过mmap创建一个PosixRandomAccessFile对象
     if (!mmap_limiter_.Acquire()) {
       *result = new PosixRandomAccessFile(filename, fd, &fd_limiter_);
       return Status::OK();
     }
 
+    // mmap的数量还没有超出限制, 将该文件mmap到内存中, 然后创建一个PosixMmapReadableFile对象
     uint64_t file_size;
     Status status = GetFileSize(filename, &file_size);
     if (status.ok()) {
@@ -572,6 +574,10 @@ class PosixEnv : public Env {
 
   Status NewWritableFile(const std::string& filename,
                          WritableFile** result) override {
+    // O_TRUNC: 如果文件已存在, 则将其清空
+    // O_WRONLY: 以只写方式打开文件
+    // O_CREAT: 如果文件不存在, 则创建文件
+    // kOpenBaseFlags: 一些基本的 flags, 比如 O_CLOEXEC
     int fd = ::open(filename.c_str(),
                     O_TRUNC | O_WRONLY | O_CREAT | kOpenBaseFlags, 0644);
     if (fd < 0) {
@@ -870,6 +876,19 @@ class SingletonEnv {
  public:
   SingletonEnv() {
 #if !defined(NDEBUG)
+    // NDEBUG 宏表示 NO DEBUG，表示 Release 模式
+    // 在调试模式下，将 env_initialized_ 标记为 true，表示已经初始化过了
+    // 有些全局变量需要在 SingletonEnv 初始化前就设置好，因为 SingletonEnv
+    // 初始化的过程中需要用到这些全局变量，比如 g_open_read_only_file_limit
+    // env_initialized_ 的作用是用来在 UT 中检查是否有在初始化全局变量前
+    // 就把 SingletonEnv 初始化了:
+    // 检查 SingletonEnv 此时是否已经初始化了
+    //     PosixDefaultEnv::AssertEnvNotInitialized();
+    // 设着好 g_open_read_only_file_limit 后再初始化 env
+    //     g_open_read_only_file_limit = limit;
+    //     env = Env::Default();
+    // 此时 env 一定是基于指定的 g_open_read_only_file_limit 初始化的
+    // 此时若 UT 出现错误，就可以排除是 env 提前初始化导致的问题
     env_initialized_.store(true, std::memory_order_relaxed);
 #endif  // !defined(NDEBUG)
     static_assert(sizeof(env_storage_) >= sizeof(EnvType),
@@ -892,6 +911,24 @@ class SingletonEnv {
   }
 
  private:
+  // 源码注释
+  // 使用 std::aligned_storage 来创建一个足够大并且正确对齐的内存空间 env_storage_
+  // 用于存放 EnvType 类型的对象。
+  // 这里使用 std::aligned_storage 的目的是为了延迟构造 env_storage_
+  // 如果写成 EnvType env_storage_ 的话，那么 env_storage_ 会在 SingletonEnv 的构造函数
+  // 执行之前，就进行初始化了。也就是先初始化 env_storage_ 然后
+  // 再执行 env_initialized_.store(true, std::memory_order::memory_order_relaxed)
+  // 但此处我们需要先执行 env_initialized_.store(true, std::memory_order::memory_order_relaxed)
+  // 再构造 env_storage_
+  //
+  // 个人感觉写成 EnvType* env_storage_ 会不会更简单些？一样可以延迟构造 env_storage_
+  // std::aligned_storage 比 EnvType* 的好处是:
+  //   - 栈空间比堆空间的分配效率更高。
+  //     - std::aligned_storage 开辟的是一块栈空间
+  //     - EnvType* 使用的是队空间
+  //   - 对齐方式
+  //     - std::aligned_storage 可以强制使用 alignof(EnvType) 的对齐方式
+  //     - EnvType* 的对齐方式取决于编译器，新版的编译器都会根据类型自动对齐，老编译器可能不会
   typename std::aligned_storage<sizeof(EnvType), alignof(EnvType)>::type
       env_storage_;
 #if !defined(NDEBUG)
