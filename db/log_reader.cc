@@ -31,6 +31,7 @@ Reader::Reader(SequentialFile* file, Reporter* reporter, bool checksum,
 Reader::~Reader() { delete[] backing_store_; }
 
 bool Reader::SkipToInitialBlock() {
+  // 计算初始偏移initial_offset_在当前block中的偏移量
   const size_t offset_in_block = initial_offset_ % kBlockSize;
   uint64_t block_start_location = initial_offset_ - offset_in_block;
 
@@ -74,9 +75,20 @@ bool Reader::ReadRecord(Slice* record, std::string* scratch) {
     // ReadPhysicalRecord may have only had an empty trailer remaining in its
     // internal buffer. Calculate the offset of the next physical record now
     // that it has returned, properly accounting for its header size.
+    // 源码注释
+    // block最后的部分为0填充的情况
+    // last_record_offset_记录当前读取到的最新一条完整数据的偏移量, 初始化为 0
+    // 后续每次读取到kFullType或者kLastType类型的记录时会更新这个值
+    // 在ReadRecord入口处, 先判断last_record_offset_和initial_offset_的大小
+    // 这里initial_offset_在构造时传入, 用于指定跳过读取的数据长度
+    // 如果last_record_offset_小于initial_offset_, 则需要跳过文件中开始的initial_offset_部分
     uint64_t physical_record_offset =
         end_of_buffer_offset_ - buffer_.size() - kHeaderSize - fragment.size();
 
+    // 源码注释
+    // resyncing_在初始化的时候, 如果有需要跳过的数据(initial_offset_>0)则会设置为true
+    // 表示当前处于跳过数据的状态。在这种状态下, 只要读取到kFullType或kLastType类型的记录就会更新resyncing_为false
+    // 表示跳过数据结束, 开始正常读取数据
     if (resyncing_) {
       if (record_type == kMiddleType) {
         continue;
@@ -186,6 +198,11 @@ void Reader::ReportDrop(uint64_t bytes, const Status& reason) {
   }
 }
 
+// 源码注释
+// 从磁盘读取文件的时候, 以逻辑块(Block)为最小读取单元
+// 一个逻辑块Block中可能有多条记录(Record), 每次解析一条Record后ReadPhysicalRecord就会返回
+// 这里返回前会更新buffer_的指针, 指向下一条记录的开始位置
+// 下次重新进入ReadPhysicalRecord后, 判断buffer_中还有记录(长度大于kHeaderSize), 则不会从文件读取, 直接接着上次的位置从buffer_中解析
 unsigned int Reader::ReadPhysicalRecord(Slice* result) {
   while (true) {
     if (buffer_.size() < kHeaderSize) {
@@ -193,6 +210,8 @@ unsigned int Reader::ReadPhysicalRecord(Slice* result) {
         // Last read was a full read, so this is a trailer to skip
         buffer_.clear();
         Status status = file_->Read(kBlockSize, &buffer_, backing_store_);
+        // 源码注释
+        // end_of_buffer_offset_更新, 更新的长度可能包含多条Record
         end_of_buffer_offset_ += buffer_.size();
         if (!status.ok()) {
           buffer_.clear();
@@ -256,9 +275,19 @@ unsigned int Reader::ReadPhysicalRecord(Slice* result) {
       }
     }
 
+    // 成功解析出一条Record就需要函数返回, 返回前更新buffer_里面的数据
+    // 把已经解析出来的数据删除, 下次接着从buffer_中解析
     buffer_.remove_prefix(kHeaderSize + length);
 
     // Skip physical record that started before initial_offset_
+    // 源码注释
+    // 该判断条件可以改写一下, 改写后更好理解:
+    // 此时buffer_.size()为剩余数据的长度
+    // end_of_buffer_offset_ - buffer_.size() < initial_offset_ + kHeaderSize + length
+
+    // 该异常是当前记录位于跳过的initial_offset_范围内, 这是因为前面我们跳过的时候, 只跳过整个逻辑块
+    // 保证从initial_offset_所在的逻辑块头部开始读。如果当前记录的偏移量小于initial_offset_, 则说明这条记录是需要跳过的
+    // 调整buffer_的开始部分, 然后返回kBadRecord
     if (end_of_buffer_offset_ - buffer_.size() - kHeaderSize - length <
         initial_offset_) {
       result->clear();

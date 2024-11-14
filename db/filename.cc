@@ -13,6 +13,15 @@
 
 namespace leveldb {
 
+// 源码注释
+// 000001.log是WAL文件, 写入的键值对, 都会先写到这个日志文件中
+// 000005.ldb是SSTable文件, 存储了持久化到磁盘的键值对
+// LOCK文件是锁文件, 一个LevelDB数据库同时只允许被一个进程操作, 一个进程打开一个数据库时会对这个文件加锁, 防止其它进程并发打开这个数据库
+// LOG是通用日志文件, 在里面打印一些系统运行的信息
+// MANIFEST-000002是资源文件, 记录了版本信息, LevelDB有一系列的ldb文件, 各个文件在不同的Level, 而资源文件记录了当前各个文件在哪一层, 下一个待分配的文件编号是什么等信息
+// CURRENT, 在进行一次Compaction后生成新的版本信息, 会将变化写入到MANIFEST文件中, 如果MANIFEST太大下次打开时会重写MANIFEST文件, 会新增一个MANIFEST
+// 而CURRENT则保存了当前使用的MANIFEST文件, 是为了安全地重写MANIFEST文件
+
 // A utility routine: write "data" to the named file and Sync() it.
 Status WriteStringToFileSync(Env* env, const Slice& data,
                              const std::string& fname);
