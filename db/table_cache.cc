@@ -11,6 +11,9 @@
 
 namespace leveldb {
 
+// 源码注释
+// file字段表示SSTable相应的RandomAccessFile结构, 即SSTable在文件中的表示
+// Table字段表示SSTable的Table结构, 其为SSTable在内存中的数据与接口
 struct TableAndFile {
   RandomAccessFile* file;
   Table* table;
@@ -29,6 +32,10 @@ static void UnrefEntry(void* arg1, void* arg2) {
   cache->Release(h);
 }
 
+// 源码注释
+// cache_的初始化构造一个LRUCache
+// TableCache其实是一个包装类, 核心是cache_(LRUCache)
+// TableCache的所有接口都是对LRUCache的封装, 方便使用
 TableCache::TableCache(const std::string& dbname, const Options& options,
                        int entries)
     : env_(options.env),
@@ -38,6 +45,9 @@ TableCache::TableCache(const std::string& dbname, const Options& options,
 
 TableCache::~TableCache() { delete cache_; }
 
+// 源码注释
+// 尝试在cache_中查找指定的SST, 如果找到了就直接返回handle
+// 如果没找到就打开这个SST, 并将其添加到cache_中然后再返handle
 Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
                              Cache::Handle** handle) {
   Status s;
@@ -46,6 +56,12 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
   Slice key(buf, sizeof(buf));
   *handle = cache_->Lookup(key);
   if (*handle == nullptr) {
+    // 源码注释
+    // 根据file_number构造出SST的文件名
+    // 早期版本的LevelDB使用的是.sst后缀, 后来改为了.ldb
+    // 为了兼容这两种命名方式, 这里会尝试两种后缀
+    // TableFileName会构建.ldb后缀的SST文件名
+    // SSTTableFileName会构建.sst后缀的SST文件名
     std::string fname = TableFileName(dbname_, file_number);
     RandomAccessFile* file = nullptr;
     Table* table = nullptr;
@@ -89,7 +105,7 @@ Iterator* TableCache::NewIterator(const ReadOptions& options,
   }
 
   Table* table = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
-  Iterator* result = table->NewIterator(options);
+  Iterator* result = table->NewIterator(options); // 调用Table::NewIterator方法创建该SST的Iterator
   result->RegisterCleanup(&UnrefEntry, cache_, handle);
   if (tableptr != nullptr) {
     *tableptr = table;
@@ -97,14 +113,21 @@ Iterator* TableCache::NewIterator(const ReadOptions& options,
   return result;
 }
 
+// 源码注释
+// 用于从Cache中查找指定的SST, 再从这个SST中查找指定的Key
 Status TableCache::Get(const ReadOptions& options, uint64_t file_number,
                        uint64_t file_size, const Slice& k, void* arg,
                        void (*handle_result)(void*, const Slice&,
                                              const Slice&)) {
+  // 源码注释
+  // 在Cache中找到指定的SST, 如果目标SST不在Cache中, 它会打开文件并将其添加到Cache
+  // handle指向Cache中的SST Item
   Cache::Handle* handle = nullptr;
   Status s = FindTable(file_number, file_size, &handle);
   if (s.ok()) {
+    // 通过handle在cache中获取SST对应的Table对象
     Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
+    // 调用Table::InternalGet方法从SST中查找指定的key, 并将结果传递给handle_result
     s = t->InternalGet(options, k, arg, handle_result);
     cache_->Release(handle);
   }
