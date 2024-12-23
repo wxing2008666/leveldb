@@ -55,10 +55,18 @@ Block::~Block() {
 static inline const char* DecodeEntry(const char* p, const char* limit,
                                       uint32_t* shared, uint32_t* non_shared,
                                       uint32_t* value_length) {
+  // 如果已经不足三个bytes, 那么肯定是没有内容或者出错了
+  // 为什么这里写明是3 bytes? 这是因为shared key length, non-shared key length
+  // value length三个长度即使是0, 也会分别占用3bytes
   if (limit - p < 3) return nullptr;
+  // 先假定三个长度都只用1bytes存储, 尝试下快速解析
   *shared = reinterpret_cast<const uint8_t*>(p)[0];
   *non_shared = reinterpret_cast<const uint8_t*>(p)[1];
   *value_length = reinterpret_cast<const uint8_t*>(p)[2];
+  // 如果最高位都是0, 那么按照压缩规则, 每个值只占一个字节且小于128
+  // 这里相当于做了一个优化, 如果三个值之和都小于128, 那肯定是每个值只占一个字节
+  // 如果三个值都小于128(每个值都可以用1个字节存储)
+  // 任一个超过1字节, 按位或的结果都会大于等于128
   if ((*shared | *non_shared | *value_length) < 128) {
     // Fast path: all three values are encoded in one byte each
     p += 3;
@@ -77,12 +85,16 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
 class Block::Iter : public Iterator {
  private:
   const Comparator* const comparator_;
+  // data_指向存放Block数据的地方
   const char* const data_;       // underlying block contents
+  // 通过data_ + restarts_可得到重启点数组的起始位置
   uint32_t const restarts_;      // Offset of restart array (list of fixed32)
   uint32_t const num_restarts_;  // Number of uint32_t entries in restart array
 
   // current_ is offset in data_ of current entry.  >= restarts_ if !Valid
+  // 当前Key-Value在data_中的偏移量
   uint32_t current_;
+  // 当前处在哪个重启点, 通过restarts_[restart_index_]可拿到当前重启点
   uint32_t restart_index_;  // Index of restart block in which current_ falls
   std::string key_;
   Slice value_;
@@ -93,15 +105,21 @@ class Block::Iter : public Iterator {
   }
 
   // Return the offset in data_ just past the end of the current entry.
+  // 返回下一个entry的从data_开始的偏移量, 也就是下一个entry的开始的地方
   inline uint32_t NextEntryOffset() const {
     return (value_.data() + value_.size()) - data_;
   }
 
+  // 获取第index个重启点在data_中的偏移量
+  // 返回的值是第index个重启点对应的key-value的开始位置
   uint32_t GetRestartPoint(uint32_t index) {
     assert(index < num_restarts_);
     return DecodeFixed32(data_ + restarts_ + index * sizeof(uint32_t));
   }
 
+  // 该函数只是设置了几个有限的状态, 其它值将在函数ParseNextKey()中设置
+  // 需要注意的是, 这里的value_并不是记录中的value字段, 而只是一个指向记录起始位置的0长度指针
+  // 这样后面的ParseNextKey函数将会解析出重启点的value字段并赋值到value_中
   void SeekToRestartPoint(uint32_t index) {
     key_.clear();
     restart_index_ = index;
@@ -140,10 +158,29 @@ class Block::Iter : public Iterator {
     ParseNextKey();
   }
 
+//                                 current_
+//                                  |
+//                                  v
+//   +--------+--------+--------+--------+--------+--------+
+//   |  Key0  |  Key1  |  Key2  |  Key3  |  Key4  |  Key5  |
+//   +--------+--------+--------+--------+--------+--------+
+
+//       ^                                   ^
+//       |                                   |
+// RestartPoint0                       RestartPoint1
+
+// 假设current_指向Key3, 上一个Key是Key2。Key2和Key3里都没有存储完整的Key, Key3需要依赖Key2来解析出完整的Key3
+// 而Key2需要依赖Key1来解析出完整的Key2, 以此类推, Key1需要依赖Key0来解析出完整的Key1
+// 而Key0位于重启点, 是没有依赖的, 自己本身就存储了完整的Key
+// 所以要找到Key2, 我们需要先找到Key3之前最近的一个重启点, 也就是RestartPoint0
+// 然后将current_移动到该重启点的位置, 再不断的向后边移动current_, 边解析出当前Key, 直到current_指向Key3的前一个Key, 也就是Key2
+
   void Prev() override {
     assert(Valid());
 
     // Scan backwards to a restart point before current_
+    // 找到比当前key(current_)的偏移量小的重启点
+    // 即要定位到当前key(current_)对应偏移量之前
     const uint32_t original = current_;
     while (GetRestartPoint(restart_index_) >= original) {
       if (restart_index_ == 0) {
@@ -154,13 +191,18 @@ class Block::Iter : public Iterator {
       }
       restart_index_--;
     }
-
+    // 使用定位到的重启点来初始化对应的key-value的开始位置
+    // 循环开始扫描找到最接近上个current_的key
     SeekToRestartPoint(restart_index_);
     do {
       // Loop until end of current entry hits the start of original entry
     } while (ParseNextKey() && NextEntryOffset() < original);
   }
 
+  // 理解Prev()的实现后, Seek()的实现就比较容易理解了
+  // 我们不能直接去找target的位置, 而是需要先找到target的那个重启点
+  // 然后再从这个重启点开始, 一步步向右移动current_, 直到找到第一个大于等于target的Key
+  // 查找重启点的过程是二分查找
   void Seek(const Slice& target) override {
     // Binary search in restart array to find the last restart point
     // with a key < target
@@ -211,8 +253,11 @@ class Block::Iter : public Iterator {
     // This is true if we determined the key we desire is in the current block
     // and is after than the current key.
     assert(current_key_compare == 0 || Valid());
+    // 如果目标键在当前重启区块内且在当前键之后
+    // 则设置skip_seek为true, 以避免不必要的重新定位
     bool skip_seek = left == restart_index_ && current_key_compare < 0;
     if (!skip_seek) {
+      // 定位到最左边的重启点, 开始向后查找
       SeekToRestartPoint(left);
     }
     // Linear search (within restart block) for first key >= target
@@ -270,6 +315,7 @@ class Block::Iter : public Iterator {
       value_ = Slice(p + non_shared, value_length);
       while (restart_index_ + 1 < num_restarts_ &&
              GetRestartPoint(restart_index_ + 1) < current_) {
+        // 移动到之后的重启点(下一个重启点), 保证重启点对应的entry位置在current_之后
         ++restart_index_;
       }
       return true;

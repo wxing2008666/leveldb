@@ -10,6 +10,13 @@
 
 namespace leveldb {
 
+// 源码注释
+// 无论是TwoLevelIterator还是MergingIterator, 在使用时都反复需要获取其中iterator是否为valid或获取其value
+// 比如在MergingIterator获取下一个key时, 其需要比较所有iterator的key, 但最终只会修改一个iterator的位置
+// 为了减少这一开销, LevelDB在TwoLevelIterator和MergingIterator中, 通过IteratorWrapper对其组合的iterator进行了封装
+// IteratorWrapper会缓存iterator当前位置的valid状态和key, 只有在iterator的位置改变时才会更新
+// 这样当访问TwoLevelIterator和MergingIterator时, 不需要每次都访问到最下层的iterator, 只需要访问缓存状态即可
+
 // A internal wrapper class with an interface similar to Iterator that
 // caches the valid() and key() results for an underlying iterator.
 // This can help avoid virtual function calls and also gives better

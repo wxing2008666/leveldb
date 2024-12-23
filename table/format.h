@@ -18,6 +18,12 @@ class Block;
 class RandomAccessFile;
 struct ReadOptions;
 
+// 源码注释
+// BlockHandle相当于一个block的"指针", 由这个block在整块数据中的的offset(varint64)和size(varint64)组成
+// 有偏移量offset和大小size即可定位到这个block在文件中的位置
+// 由于采用varint64进行编码, 每个varint64最多占用10字节, 所以一个BlockHandle最多占用 20 字节
+// BlockHandle是定长, 而BlockHandle编码的结果是变长的
+
 // BlockHandle is a pointer to the extent of a file that stores a data
 // block or a meta block.
 class BlockHandle {
@@ -45,6 +51,22 @@ class BlockHandle {
 
 // Footer encapsulates the fixed information stored at the tail
 // end of every table file.
+// 源码注释
+// 在一个SSTable中文件末尾的Footer是定长的, 其他数据都被划分成一个个变长的block:
+// index block、metaindex block、meta blocks、data blocks
+// Footer的大小为48字节, 内容是一个8字节的magic number和两个BlockHandle——index handle和meta index handle
+// index handle指向index block, meta index handle指向meta index block
+// BlockHandle相当于一个block的"指针", 由这个block的offset(varint64)和size(varint64)组成。
+// 由于采用varint64进行编码, 每个varint64最多占用10字节, 所以一个BlockHandle最多占用 20 字节
+// BlockHandle是定长, 而BlockHandle编码的结果是变长的, 所以Footer编码的时候需要进行padding
+// index block中的每条key-value指向一个data block, value比较简单直接, 就是对应的data block的BlockHandle
+// key是一个大于等于当前data block中最大的key且小于下一个block中最小的 key, 这一块的逻辑可以参考FindShortestSeparator的调用和实现
+// 这样做是为了减小index block的体积, 毕竟我们希望程序运行的时候, index block被尽可能cache在内存中
+
+// Meta index block: 指向Meta Block的索引, 用于快速定位Meta Block
+// Meta block: 用于快速filter某一个User Key是否在当前SSTable中, 默认为Bloom Filter
+// Data block是实际的key-value数据
+
 class Footer {
  public:
   // Encoded length of a Footer.  Note that the serialization of a

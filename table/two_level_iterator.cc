@@ -13,6 +13,70 @@ namespace leveldb {
 
 namespace {
 
+// 源码注释
+// TwoLevelIterator在LevelDB中常用于有索引结构的二级查询
+// 可以将index的iterator和data的iterator组合到一起
+// seek时TwoLevelIterator会先通过index iterator, seek到相应的index处
+// 并将index的value作为arg传给data iterator(block_funciton)通过data iterator来访问真正的数据
+// 如果从key顺序的角度来看TwoLevelIterator, 其需要index有序、每个index下的data有序、所有index下的所有data全局有序
+// 即TwoLevelIterator实际上是一个建立在多级查找结构上的iterator; LevelDB中主要有两个符合该结构的组件:
+
+// 其一是level>0的SSTable, 其每层SSTable可以按照key排序, 每个SSTable内也按照key排序且每层SSTable中的key没有overlap且全局有序
+// 因此LevelDB中Version的Concaterating Iterator实际上就是一个TwoLevelIterator
+// 其第一级iterator是LevelFileNumIterator, 该iterator按照key的顺序遍历每层SSTable
+// 其第二级iterator是Table Iterator, 该iterator可以按照key的顺序遍历SSTable中的key/value
+// Table Iterator本身也是一个TwoLevelIterator, 这也是LevelDB中第二个符合该结构的部分
+
+// 其二即为SSTable内部的index与data。Table Iterator作为TwoLevelIterator
+// 其第一级iterator遍历SSTable中的index, 第二级iterator遍历index相应的data block中的key/value
+
+// 如果每个iterator中的key有序, 但是所有iterator中的所有key全局无序, 就不能使用TwoLevelIterator来组装多个iterator
+// 此时需要一种能够"归并"多路有序iterator的结构, 即MergingIterator
+
+// SST格式:
+/*
++---------------------+
+|   Data Block 1      |
++---------------------+
+|   Data Block 2      |
++---------------------+
+|        ...          |
++---------------------+
+|   Data Block N      |
++---------------------+
+|   Meta Block 1      |
++---------------------+
+|        ...          |
++---------------------+
+|   Meta Block K      |
++---------------------+
+| Meta Index Block    |
++---------------------+
+|   Index Block       |
++---------------------+
+|      Footer         |
++---------------------+
+*/
+// SST将Key-Value分散在多个Data Block里, Index Block里存储每个Data Block的Key范围和在SST文件中的偏移量
+// Index Block格式:
+/*
++--------------------------------------------------+
+| Key1 | Block Handle1(指向第一个 Data Block 的信息) |
++--------------------------------------------------+
+| Key2 | Block Handle2(指向第二个 Data Block 的信息) |
++--------------------------------------------------+
+| Key3 | Block Handle3                             |
++--------------------------------------------------+
+| ...............                                  |
++--------------------------------------------------+
+| KeyN | Block HandleN                             |
++--------------------------------------------------+
+*/
+// Block Handle1里包含了Data Block1在SST文件中的偏移量和大小
+// 现在要查找一个Key, 需要先到IndexBlock中通过二分查找的方式找到对应的Block Handle
+// 然后通过这个Block Handle找到对应的Data Block, 最后再到Data Block中查找这个Key
+
+
 typedef Iterator* (*BlockFunction)(void*, const ReadOptions&, const Slice&);
 
 class TwoLevelIterator : public Iterator {

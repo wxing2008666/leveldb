@@ -46,6 +46,7 @@ TableCache::TableCache(const std::string& dbname, const Options& options,
 TableCache::~TableCache() { delete cache_; }
 
 // 源码注释
+// LevelDB中会使用file_number给SortedTable编号。为了提高读取性能简化使用, LevelDB提供了TableCache用以缓存SortedTable及对应的.ldb 文件
 // 尝试在cache_中查找指定的SST, 如果找到了就直接返回handle
 // 如果没找到就打开这个SST, 并将其添加到cache_中然后再返handle
 Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
