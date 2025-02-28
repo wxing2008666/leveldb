@@ -17,6 +17,9 @@ class SequentialFile;
 
 namespace log {
 
+// 源码注释
+// 详细原理请参考log_writer.h部分注释
+
 class Reader {
  public:
   // Interface for reporting errors.
@@ -40,6 +43,7 @@ class Reader {
   //
   // The Reader will start reading at the first record located at physical
   // position >= initial_offset within the file.
+  // initial_offset是当前文件中开始读取的物理位置
   Reader(SequentialFile* file, Reporter* reporter, bool checksum,
          uint64_t initial_offset);
 
@@ -53,6 +57,9 @@ class Reader {
   // "*scratch" as temporary storage.  The contents filled in *record
   // will only be valid until the next mutating operation on this
   // reader or the next mutation to *scratch.
+  // 源码注释
+  // 填充到*record中的内容仅在对这个读取器进行下一次变更操作
+  // 或者对*scratch进行下一次修改之前有效
   bool ReadRecord(Slice* record, std::string* scratch);
 
   // Returns the physical offset of the last record returned by ReadRecord.
@@ -75,9 +82,11 @@ class Reader {
   // Skips all blocks that are completely before "initial_offset_".
   //
   // Returns true on success. Handles reporting.
+  // 跳过直到initial_offset的位置, 返回true表示成功
   bool SkipToInitialBlock();
 
   // Return type, or one of the preceding special values
+  // 读取Record返回记录类型, 或者kEof、kBadRecord
   unsigned int ReadPhysicalRecord(Slice* result);
 
   // Reports dropped bytes to the reporter.
@@ -103,6 +112,8 @@ class Reader {
   // True if we are resynchronizing after a seek (initial_offset_ > 0). In
   // particular, a run of kMiddleType and kLastType records can be silently
   // skipped in this mode
+  // 在一次查找后我们再同步则是True
+  // 特别的, kMiddleType和kLastType会被跳过
   bool resyncing_;
 };
 

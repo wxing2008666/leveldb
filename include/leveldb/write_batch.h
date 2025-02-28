@@ -41,10 +41,12 @@ class Slice;
 
 // 每一个WriteBatch都是以一个固定长度的头部开始, 然后后面接着多条连续的记录
 // 头部固定12字节, 其中前8字节为WriteBatch的序列号, 对应rep_[0]到rep_[7]
-// 每次处理Batch中的记录时才会更新, 后四字节为当前Batch中的记录数, 对应rep_[8]到rep_[11]
-// 随后的记录结构为:
-// 插入数据时: kTypeValue, [Key_size, Key], [Value_size, Value]
-// 删除数据时: kTypeDeletion, [Key_size, Key]
+// 每次处理Batch中的记录时才会更新, 后四字节为当前Batch中entry的记录数, 对应rep_[8]到rep_[11]
+// 数据格式如下:
+// |--SeqNum(8 bytes)--|--count(4 bytes)--|--entry--|--entry--|--entry--|
+// 随后的记录entry结构为:
+// 插入数据时: |---kTypeValue----|--[Key_size, Key]--|--[Value_size, Value]--|
+// 删除数据时: |--kTypeDeletion--|--[Key_size, Key]--|
 
 // Handler声明在WriteBatch内, 也说明Handler类只用于WriteBatch(从属关系上属于)
 // 友元类WriteBatchInternal其实是IMPL设计模式的一种变种, 这里就是为了将不相关的功能性函数和实际的业务数据之间进行分离

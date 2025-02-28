@@ -20,6 +20,10 @@ class RandomAccessFile;
 struct ReadOptions;
 class TableCache;
 
+// 源码注释
+// Table == SST(Sorted Strings Table)
+// Table将SST文件的读取细节封装了起来, 让上层不需要去关心SST文件的格式和读取细节
+
 // A Table is a sorted map from strings to strings.  Tables are
 // immutable and persistent.  A Table may be safely accessed from
 // multiple threads without external synchronization.
@@ -69,6 +73,7 @@ class LEVELDB_EXPORT Table {
   // Calls (*handle_result)(arg, ...) with the entry found after a call
   // to Seek(key).  May not make such a call if filter policy says
   // that key is not present.
+  // 从SST中查找某个Key, 如果这个Key找到了, 则调用handle_result函数
   Status InternalGet(const ReadOptions&, const Slice& key, void* arg,
                      void (*handle_result)(void* arg, const Slice& k,
                                            const Slice& v));

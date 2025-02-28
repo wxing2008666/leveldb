@@ -27,8 +27,8 @@ namespace log {
 
 // LevelDB中记录的长度是不确定的, 如果想要与32KB块对齐且为了尽可能地利用空间
 // 那么较长的记录可能会被拆分为多个段, 以能够将其放入块的剩余空间中
-// LevelDB定义只有1个段的记录(Record)为FullType类型, 由多个段组成的记录(Record)的首位段和最后端分别为FirstType与LastType, 中间段为MiddleType
-// Record的格式如下:
+// LevelDB定义只有1个段的记录(fragment)为FullType类型, 由多个段组成的记录(fragment)的首位段和最后端分别为FirstType与LastType, 中间段为MiddleType
+// 每个段的格式如下:
 //
 // |header(CRC:4byte+Len:2byte+Type:1byte)|data|
 
@@ -36,7 +36,7 @@ namespace log {
 //
 // [---------block1-----------][------------block2----------][---------block3----------000000]
 // |--FullType--|--FirstType--|--MiddleType--|--MiddleType--|--LastType--|--FullType--|
-// |record1     |record2                                                 |record3     |
+// |fragment1   |fragment2                                               |fragment3   |
 
 // 如果在写入时, 与32KB对齐的剩余空间不足以放入7字节的header时, LevelDB会将剩余空间填充为0x00, 并从下一个与32KB对齐(Block)处继续写入
 

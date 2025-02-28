@@ -13,6 +13,10 @@
 namespace leveldb {
 namespace log {
 
+// 源码注释
+// 详细原理请参考log_writer.h部分注释
+
+
 Reader::Reporter::~Reporter() = default;
 
 Reader::Reader(SequentialFile* file, Reporter* reporter, bool checksum,
@@ -33,6 +37,7 @@ Reader::~Reader() { delete[] backing_store_; }
 bool Reader::SkipToInitialBlock() {
   // 计算初始偏移initial_offset_在当前block中的偏移量
   const size_t offset_in_block = initial_offset_ % kBlockSize;
+  // 计算块的起始位置, 相对于initial_offset_的起始位置
   uint64_t block_start_location = initial_offset_ - offset_in_block;
 
   // Don't search a block if we'd be in the trailer

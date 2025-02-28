@@ -42,6 +42,8 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
     return Status::Corruption("file is too short to be an sstable");
   }
 
+  // Read and check footer
+  // 优先把footer读取出来, 并校验是否正确, 尾部信息包括了索引块的位置等信息
   char footer_space[Footer::kEncodedLength];
   Slice footer_input;
   Status s = file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
@@ -53,6 +55,7 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
   if (!s.ok()) return s;
 
   // Read the index block
+  // 根据footer里的index_handle读出index_block_contents
   BlockContents index_block_contents;
   ReadOptions opt;
   if (options.paranoid_checks) {
@@ -63,6 +66,9 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
   if (s.ok()) {
     // We've successfully read the footer and the index block: we're
     // ready to serve requests.
+    // 由index_block_contents构建出index_block
+    // index_block构建出来后, 就可以创建出一个Table对象了
+    // 等到需要查找某个Key的时候, 通过index_block找到对应的BlockHandle, 然后再读出对应的Block
     Block* index_block = new Block(index_block_contents);
     Rep* rep = new Table::Rep;
     rep->options = options;

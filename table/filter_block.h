@@ -27,6 +27,11 @@ class FilterPolicy;
 //
 // The sequence of calls to FilterBlockBuilder must match the regexp:
 //      (StartBlock AddKey*)* Finish
+// 源码注释
+// 在构造SST的过程中, 每当一个Data Block构建完成, 就会通过StartBlock(uint64_t block_offset)方法在
+// Filter Block里构建与下一个Data Block对应的Filter
+// 通过Add(const Slice& key)方法, 我们可以将需要Key添加到对应的Filter里
+// 最后再通过Finish()方法, 获取FilterBlock的完整内容
 class FilterBlockBuilder {
  public:
   explicit FilterBlockBuilder(const FilterPolicy*);
@@ -34,8 +39,12 @@ class FilterBlockBuilder {
   FilterBlockBuilder(const FilterBlockBuilder&) = delete;
   FilterBlockBuilder& operator=(const FilterBlockBuilder&) = delete;
 
+  // 构造与Data Block对应的Filters
+  // block_offset是对应的Data Block的起始地址
   void StartBlock(uint64_t block_offset);
+  // 将Key添加到filter里
   void AddKey(const Slice& key);
+  // 结束Filter Block的构建, 并返回Filter Block的完整内容
   Slice Finish();
 
  private:
@@ -46,6 +55,7 @@ class FilterBlockBuilder {
   std::vector<size_t> start_;    // Starting index in keys_ of each key
   std::string result_;           // Filter data computed so far
   std::vector<Slice> tmp_keys_;  // policy_->CreateFilter() argument
+  // filter_offsets_中记录了每个Filter的起始偏移量
   std::vector<uint32_t> filter_offsets_;
 };
 
